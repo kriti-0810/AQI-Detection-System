@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AQI Detection System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Air Quality Index Detection</h1>
+        <input type="text" id="cityInput" placeholder="Enter City Name">
+        <button onclick="fetchWeather()">Get Data</button>
+        <div id="weatherResult"></div>
+    </div>
+
+    <script>
+        function fetchWeather() {
+            let city = document.getElementById("cityInput").value;
+
+            fetch('/weather', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ city: city })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById("weatherResult").innerHTML = `<p>${data.error}</p>`;
+                } else {
+                    document.getElementById("weatherResult").innerHTML = `
+                        <h2>${data.city}</h2>
+                        <p>${data.description}</p>
+                        <p>Temperature: ${data.temperature}°C</p>
+                        <p>Humidity: ${data.humidity}%</p>
+                        <p><strong>AQI Level:</strong> ${data.aqi} (${data.aqi_status})</p>
+                        <img src="${data.icon}" alt="Weather icon">
+                    `;
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+</html>
