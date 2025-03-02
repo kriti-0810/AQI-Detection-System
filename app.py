@@ -2,6 +2,7 @@ import requests
 from flask import Flask, render_template, request, jsonify
 from config import API_KEY
 
+
 app = Flask(__name__)
 
 def get_weather(city):
