@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}{{ city }} AQI Details - AQI Monitoring System{% endblock %}
+
+{% block content %}
+<div class="city-detail-container">
+    <div class="city-detail-header">
+        <h2>{{ city }} Air Quality</h2>
+        <div class="city-detail-actions">
+            <button id="refresh-data" class="btn btn-secondary">Refresh Data</button>
+            <button id="share-btn" class="btn btn-primary">Share</button>
+        </div>
+    </div>
+    
+    <div class="city-detail-main">
+        <div class="aqi-overview">
+            <div class="aqi-card large">
+                <h3>Current AQI</h3>
+                <div class="aqi-value {{ get_aqi_class(data.aqi) }}">{{ data.aqi }}</div>
+                <p>{{ get_aqi_description(data.aqi) }}</p>
+                <div class="aqi-updated">
+                    Updated: {{ data.time }}
+                </div>
+            </div>
+            
+            <div class="aqi-health-implications">
+                <h3>Health Implications</h3>
+                <div class="health-content">
+                    {{ get_health_implications(data.aqi) | safe }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="pollutants-section">
+            <h3>Pollutant Breakdown</h3>
+            <div class="pollutants-grid">
+                {% if data.iaqi.pm25 %}
+                <div class="pollutant-card">
+                    <h4>PM2.5</h4>
+                    <div class="pollutant-value">{{ data.iaqi.pm25.v }}</div>
+                    <p>Fine Particulate Matter</p>
+                </div>
+                {% endif %}
+                
+                {% if data.iaqi.pm10 %}
+                <div class="pollutant-card">
+                    <h4>PM10</h4>
+                    <div class="pollutant-value">{{ data.iaqi.pm10.v }}</div>
+                    <p>Coarse Particulate Matter</p>
+                </div>
+                {% endif %}
+                
+                {% if data.iaqi.o3 %}
+                <div class="pollutant-card">
+                    <h4>O3</h4>
+                    <div class="pollutant-value">{{ data.iaqi.o3.v }}</div>
+                    <p>Ozone</p>
+                </div>
+                {% endif %}
+                
+                {% if data.iaqi.no2 %}
+                <div class="pollutant-card">
+                    <h4>NO2</h4>
+                    <div class="pollutant-value">{{ data.iaqi.no2.v }}</div>
+                    <p>Nitrogen Dioxide</p>
+                </div>
+                {% endif %}
+                
+                {% if data.iaqi.so2 %}
+                <div class="pollutant-card">
+                    <h4>SO2</h4>
+                    <div class="pollutant-value">{{ data.iaqi.so2.v }}</div>
+                    <p>Sulfur Dioxide</p>
+                </div>
+                {% endif %}
+                
+                {% if data.iaqi.co %}
+                <div class="pollutant-card">
+                    <h4>CO</h4>
+                    <div class="pollutant-value">{{ data.iaqi.co.v }}</div>
+                    <p>Carbon Monoxide</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="historical-data">
+            <h3>24-Hour Trend</h3>
+            <div class="chart-container">
+                <canvas id="aqiTrendChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="station-info">
+            <h3>Monitoring Station</h3>
+            <p>{{ data.station }}</p>
+            <p>Dominant Pollutant: {{ data.dominentpol }}</p>
+        </div>
+    </div>
+</div>
+
+<div id="share-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Share AQI Information</h3>
+        <div class="share-options">
+            <button class="btn-share-option" data-platform="twitter">Twitter</button>
+            <button class="btn-share-option" data-platform="facebook">Facebook</button>
+            <button class="btn-share-option" data-platform="whatsapp">WhatsApp</button>
+            <button class="btn-share-option" data-platform="email">Email</button>
+        </div>
+        <div class="share-link">
+            <input type="text" id="share-url" readonly>
+            <button id="copy-link" class="btn btn-small">Copy</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Mock historical data (in a real app, this would come from the backend)
+    const mockHistoricalData = {
+        labels: Array.from({length: 24}, (_, i) => {
+            const hour = new Date();
+            hour.setHours(hour.getHours() - 23 + i);
+            return hour.getHours() + ':00';
+        }),
+        values: [
+            {{ data.aqi }} - 10 + Math.floor(Math.random() * 20),
+            {{ data.aqi }} - 15 + Math.floor(Math.random() * 30),
+            {{ data.aqi }} - 5 + Math.floor(Math.random() * 10),
+            {{ data.aqi }} - 8 + Math.floor(Math.random() * 16),
+            {{ data.aqi }} - 12 + Math.floor(Math.random() * 24),
+            {{ data.aqi }} - 7 + Math.floor(Math.random() * 14),
+            {{ data.aqi }} - 3 + Math.floor(Math.random() * 6),
+            {{ data.aqi }} - 5 + Math.floor(Math.random() * 10),
+            {{ data.aqi }} - 8 + Math.floor(Math.random() * 16),
+            {{ data.aqi }} - 10 + Math.floor(Math.random() * 20),
+            {{ data.aqi }} - 15 + Math.floor(Math.random() * 30),
+            {{ data.aqi }} - 12 + Math.floor(Math.random() * 24),
+            {{ data.aqi }} - 8 + Math.floor(Math.random() * 16),
+            {{ data.aqi }} - 5 + Math.floor(Math.random() * 10),
+            {{ data.aqi }} - 3 + Math.floor(Math.random() * 6),
+            {{ data.aqi }} - 7 + Math.floor(Math.random() * 14),
+            {{ data.aqi }} - 10 + Math.floor(Math.random() * 20),
+            {{ data.aqi }} - 12 + Math.floor(Math.random() * 24),
+            {{ data.aqi }} - 15 + Math.floor(Math.random() * 30),
+            {{ data.aqi }} - 8 + Math.floor(Math.random() * 16),
+            {{ data.aqi }} - 5 + Math.floor(Math.random() * 10),
+            {{ data.aqi }} - 3 + Math.floor(Math.random() * 6),
+            {{ data.aqi }} - 7 + Math.floor(Math.random() * 14),
+            {{ data.aqi }}
+        ]
+    };
+    
+    // Create the chart
+    const ctx = document.getElementById('aqiTrendChart').getContext('2d');
+    const aqiTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: mockHistoricalData.labels,
+            datasets: [{
+                label: 'AQI',
+                data: mockHistoricalData.values,
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    suggestedMin: Math.max(0, Math.min(...mockHistoricalData.values) - 20),
+                    suggestedMax: Math.max(...mockHistoricalData.values) + 20
+                }
+            }
+        }
+    });
+    
+    // Refresh data
+    document.getElementById('refresh-data').addEventListener('click', function() {
+        window.location.reload();
+    });
+    
+    // Share functionality
+    document.getElementById('share-btn').addEventListener('click', function() {
+        const cityName = '{{ city }}';
+        const aqi = '{{ data.aqi }}';
+        const description = '{{ get_aqi_description(data.aqi) }}';
+        
+        const shareUrl = window.location.href;
+        const shareText = `Air Quality in ${cityName}: AQI ${aqi} (${description})`;
+        
+        document.getElementById('share-url').value = shareUrl;
+        
+        // Set up share buttons
+        document.querySelectorAll('.btn-share-option').forEach(btn => {
+            const platform = btn.dataset.platform;
+            
+            btn.onclick = function() {
+                let shareLink;
+                
+                switch(platform) {
+                    case 'twitter':
+                        shareLink = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+                        break;
+                    case 'facebook':
+                        shareLink = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+                        break;
+                    case 'whatsapp':
+                        shareLink = `https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`;
+                        break;
+                    case 'email':
+                        shareLink = `mailto:?subject=Air Quality Update for ${encodeURIComponent(cityName)}&body=${encodeURIComponent(shareText + '\n\nCheck it out: ' + shareUrl)}`;
+                        break;
+                }
+                
+                if (shareLink) {
+                    window.open(shareLink, '_blank');
+                }
+            };
+        });
+        
+        document.getElementById('share-modal').style.display = 'block';
+    });
+    
+    // Close modal
+    document.querySelector('.close-modal').addEventListener('click', function() {
+        document.getElementById('share-modal').style.display = 'none';
+    });
+    
+    // Copy share link
+    document.getElementById('copy-link').addEventListener('click', function() {
+        const shareUrl = document.getElementById('share-url');
+        shareUrl.select();
+        document.execCommand('copy');
+        this.textContent = 'Copied!';
+        setTimeout(() => {
+            this.textContent = 'Copy';
+        }, 2000);
+    });
+</script>
+{% endblock %}
+

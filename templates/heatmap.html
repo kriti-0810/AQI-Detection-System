@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}AQI Heatmap - AQI Monitoring System{% endblock %}
+
+{% block head %}
+<style>
+    #map {
+        height: 600px;
+        width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .map-controls {
+        margin-bottom: 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        align-items: center;
+    }
+    
+    .legend {
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        margin-right: 8px;
+        border-radius: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="heatmap-container">
+    <div class="heatmap-header">
+        <h2>Global AQI Heatmap</h2>
+        <p>Explore air quality across different regions. Zoom in to see more detailed data.</p>
+    </div>
+    
+    <div class="map-controls">
+        <div class="form-group">
+            <label for="region-select">Region:</label>
+            <select id="region-select">
+                <option value="world">World</option>
+                <option value="north-america">North America</option>
+                <option value="europe">Europe</option>
+                <option value="asia">Asia</option>
+                <option value="africa">Africa</option>
+                <option value="oceania">Oceania</option>
+                <option value="south-america">South America</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="pollutant-select">Pollutant:</label>
+            <select id="pollutant-select">
+                <option value="aqi">AQI (Overall)</option>
+                <option value="pm25">PM2.5</option>
+                <option value="pm10">PM10</option>
+                <option value="o3">Ozone</option>
+                <option value="no2">NO₂</option>
+                <option value="so2">SO₂</option>
+                <option value="co">CO</option>
+            </select>
+        </div>
+        
+        <button id="refresh-map" class="btn btn-secondary">Refresh Data</button>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div class="heatmap-info">
+        <h3>About This Map</h3>
+        <p>
+            This heatmap displays real-time air quality data from monitoring stations around the world.
+            The colors represent different AQI levels according to the standard scale:
+        </p>
+        
+        <div class="legend-container">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #00e400;"></div>
+                <span>Good (0-50)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ffff00;"></div>
+                <span>Moderate (51-100)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ff7e00;"></div>
+                <span>Unhealthy for Sensitive Groups (101-150)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ff0000;"></div>
+                <span>Unhealthy (151-200)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #99004c;"></div>
+                <span>Very Unhealthy (201-300)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #7e0023;"></div>
+                <span>Hazardous (301+)</span>
+            </div>
+        </div>
+        
+        <p>
+            Click on any marker to see detailed information about that location's air quality.
+            You can also use the controls above to filter by region or specific pollutant.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize the map
+    let map;
+    let markers = [];
+    
+    function initMap() {
+        // Center on world view
+        map = L.map('map').setView([20, 0], 2);
+        
+        // Add tile layer (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        
+        // Add legend to map
+        const legend = L.control({position: 'bottomright'});
+        
+        legend.onAdd = function(map) {
+            const div = L.DomUtil.create('div', 'legend');
+            div.innerHTML = `
+                <h4>AQI Legend</h4>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #00e400;"></div>
+                    <span>0-50: Good</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #ffff00;"></div>
+                    <span>51-100: Moderate</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #ff7e00;"></div>
+                    <span>101-150: Unhealthy for Sensitive Groups</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #ff0000;"></div>
+                    <span>151-200: Unhealthy</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #99004c;"></div>
+                    <span>201-300: Very Unhealthy</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #7e0023;"></div>
+                    <span>301+: Hazardous</span>
+                </div>
+            `;
+            return div;
+        };
+        
+        legend.addTo(map);
+        
+        // Load initial data
+        loadMapData();
+    }
+    
+    function getMarkerColor(aqi) {
+        if (aqi <= 50) return '#00e400';
+        if (aqi <= 100) return '#ffff00';
+        if (aqi <= 150) return '#ff7e00';
+        if (aqi <= 200) return '#ff0000';
+        if (aqi <= 300) return '#99004c';
+        return '#7e0023';
+    }
+    
+    function getAqiDescription(aqi) {
+        if (aqi <= 50) return 'Good';
+        if (aqi <= 100) return 'Moderate';
+        if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+        if (aqi <= 200) return 'Unhealthy';
+        if (aqi <= 300) return 'Very Unhealthy';
+        return 'Hazardous';
+    }
+    
+    function clearMarkers() {
+        markers.forEach(marker => map.removeLayer(marker));
+        markers = [];
+    }
+    
+    function loadMapData() {
+        // In a real application, this would fetch data from the backend
+        // For this demo, we'll use mock data
+        
+        clearMarkers();
+        
+        const region = document.getElementById('region-select').value;
+        const pollutant = document.getElementById('pollutant-select').value;
+        
+        // Mock data for major cities
+        const mockData = [
+            { city: 'New York', country: 'USA', lat: 40.7128, lng: -74.0060, aqi: 42, pm25: 10, pm10: 20, o3: 30, no2: 15, so2: 5, co: 0.5 },
+            { city: 'London', country: 'UK', lat: 51.5074, lng: -0.1278, aqi: 65, pm25: 15, pm10: 25, o3: 40, no2: 30, so2: 8, co: 0.7 },
+            { city: 'Paris', country: 'France', lat: 48.8566, lng: 2.3522, aqi: 58, pm25: 14, pm10: 22, o3: 35, no2: 25, so2: 7, co: 0.6 },
+            { city: 'Beijing', country: 'China', lat: 39.9042, lng: 116.4074, aqi: 135, pm25: 45, pm10: 80, o3: 60, no2: 40, so2: 20, co: 1.2 },
+            { city: 'Tokyo', country: 'Japan', lat: 35.6762, lng: 139.6503, aqi: 72, pm25: 18, pm10: 30, o3: 45, no2: 35, so2: 10, co: 0.8 },
+            { city: 'Delhi', country: 'India', lat: 28.6139, lng: 77.2090, aqi: 160, pm25: 60, pm10: 120, o3: 70, no2: 45, so2: 25, co: 1.5 },
+            { city: 'Sydney', country: 'Australia', lat: -33.8688, lng: 151.2093, aqi: 38, pm25: 9, pm10: 18, o3: 25, no2: 12, so2: 4, co: 0.4 },
+            { city: 'Cairo', country: 'Egypt', lat: 30.0444, lng: 31.2357, aqi: 120, pm25: 40, pm10: 90, o3: 55, no2: 38, so2: 18, co: 1.1 },
+            { city: 'Los Angeles', country: 'USA', lat: 34.0522, lng: -118.2437, aqi: 88, pm25: 22, pm10: 40, o3: 50, no2: 30, so2: 12, co: 0.9 },
+            { city: 'Mexico City', country: 'Mexico', lat: 19.4326, lng: -99.1332, aqi: 110, pm25: 35, pm10: 70, o3: 65, no2: 42, so2: 15, co: 1.0 },
+            { city: 'São Paulo', country: 'Brazil', lat: -23.5505, lng: -46.6333, aqi: 95, pm25: 25, pm10: 50, o3: 55, no2: 35, so2: 14, co: 0.9 },
+            { city: 'Moscow', country: 'Russia', lat: 55.7558, lng: 37.6173, aqi: 78, pm25: 20, pm10: 35, o3: 42, no2: 28, so2: 10, co: 0.8 },
+            { city: 'Bangkok', country: 'Thailand', lat: 13.7563, lng: 100.5018, aqi: 105, pm25: 32, pm10: 65, o3: 58, no2: 36, so2: 16, co: 1.0 },
+            { city: 'Singapore', country: 'Singapore', lat: 1.3521, lng: 103.8198, aqi: 55, pm25: 15, pm10: 25, o3: 30, no2: 20, so2: 8, co: 0.6 },
+            { city: 'Berlin', country: 'Germany', lat: 52.5200, lng: 13.4050, aqi: 48, pm25: 12, pm10: 22, o3: 28, no2: 18, so2: 6, co: 0.5 },
+            { city: 'Madrid', country: 'Spain', lat: 40.4168, lng: -3.7038, aqi: 62, pm25: 16, pm10: 28, o3: 38, no2: 26, so2: 9, co: 0.7 },
+            { city: 'Rome', country: 'Italy', lat: 41.9028, lng: 12.4964, aqi: 68, pm25: 17, pm10: 30, o3: 40, no2: 28, so2: 10, co: 0.7 },
+            { city: 'Seoul', country: 'South Korea', lat: 37.5665, lng: 126.9780, aqi: 85, pm25: 22, pm10: 42, o3: 48, no2: 32, so2: 12, co: 0.8 },
+            { city: 'Cape Town', country: 'South Africa', lat: -33.9249, lng: 18.4241, aqi: 45, pm25: 11, pm10: 20, o3: 26, no2: 16, so2: 5, co: 0.5 },
+            { city: 'Toronto', country: 'Canada', lat: 43.6532, lng: -79.3832, aqi: 40, pm25: 10, pm10: 18, o3: 24, no2: 14, so2: 4, co: 0.4 }
+        ];
+        
+        // Filter by region if needed
+        let filteredData = mockData;
+        if (region !== 'world') {
+            const regionMappings = {
+                'north-america': ['USA', 'Canada', 'Mexico'],
+                'europe': ['UK', 'France', 'Germany', 'Spain', 'Italy', 'Russia'],
+                'asia': ['China', 'Japan', 'India', 'Thailand', 'Singapore', 'South Korea'],
+                'africa': ['Egypt', 'South Africa'],
+                'oceania': ['Australia'],
+                'south-america': ['Brazil']
+            };
+            
+            filteredData = mockData.filter(item => regionMappings[region].includes(item.country));
+        }
+        
+        // Add markers to the map
+        filteredData.forEach(location => {
+            const value = pollutant === 'aqi' ? location.aqi : location[pollutant];
+            const color = getMarkerColor(value);
+            
+            const circleMarker = L.circleMarker([location.lat, location.lng], {
+                radius: 10,
+                fillColor: color,
+                color: '#000',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(map);
+            
+            // Create popup content
+            let popupContent = `
+                <div class="popup-content">
+                    <h3>${location.city}, ${location.country}</h3>
+                    <div class="aqi-display">
+                        <div class="aqi-value" style="background-color: ${getMarkerColor(location.aqi)}">
+                            ${location.aqi}
+                        </div>
+                        <p>${getAqiDescription(location.aqi)}</p>
+                    </div>
+                    <div class="pollutant-details">
+                        <p><strong>PM2.5:</strong> ${location.pm25} μg/m³</p>
+                        <p><strong>PM10:</strong> ${location.pm10} μg/m³</p>
+                        <p><strong>Ozone:</strong> ${location.o3} ppb</p>
+                        <p><strong>NO₂:</strong> ${location.no2} ppb</p>
+                        <p><strong>SO₂:</strong> ${location.so2} ppb</p>
+                        <p><strong>CO:</strong> ${location.co} ppm</p>
+                    </div>
+                    <a href="/city/${encodeURIComponent(location.city)}" class="btn btn-small">View Details</a>
+                </div>
+            `;
+            
+            circleMarker.bindPopup(popupContent);
+            markers.push(circleMarker);
+        });
+        
+        // Adjust map view if region is selected
+        if (region !== 'world') {
+            const regionViews = {
+                'north-america': { lat: 40, lng: -100, zoom: 3 },
+                'europe': { lat: 50, lng: 10, zoom: 4 },
+                'asia': { lat: 30, lng: 100, zoom: 3 },
+                'africa': { lat: 0, lng: 20, zoom: 3 },
+                'oceania': { lat: -25, lng: 135, zoom: 4 },
+                'south-america': { lat: -15, lng: -60, zoom: 3 }
+            };
+            
+            const view = regionViews[region];
+            map.setView([view.lat, view.lng], view.zoom);
+        } else {
+            map.setView([20, 0], 2);
+        }
+    }
+    
+    // Initialize map when page loads
+    window.onload = function() {
+        initMap();
+        
+        // Add event listeners
+        document.getElementById('region-select').addEventListener('change', loadMapData);
+        document.getElementById('pollutant-select').addEventListener('change', loadMapData);
+        document.getElementById('refresh-map').addEventListener('click', loadMapData);
+    };
+</script>
+{% endblock %}
+

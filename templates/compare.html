@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Cities - AQI Monitoring System{% endblock %}
+
+{% block content %}
+<div class="compare-container">
+    <div class="compare-header">
+        <h2>Compare Air Quality Between Cities</h2>
+        <p>Select cities from your saved list to compare their air quality data.</p>
+    </div>
+    
+    <div class="city-selection">
+        <form id="compare-form">
+            <div class="form-group">
+                <label for="city1">City 1</label>
+                <select id="city1" name="city1" required>
+                    <option value="">Select a city</option>
+                    {% for city in cities %}
+                        <option value="{{ city.city_name }}">{{ city.city_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="city2">City 2</label>
+                <select id="city2" name="city2" required>
+                    <option value="">Select a city</option>
+                    {% for city in cities %}
+                        <option value="{{ city.city_name }}">{{ city.city_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group optional">
+                <label for="city3">City 3 (Optional)</label>
+                <select id="city3" name="city3">
+                    <option value="">Select a city</option>
+                    {% for city in cities %}
+                        <option value="{{ city.city_name }}">{{ city.city_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Compare</button>
+        </form>
+    </div>
+    
+    <div id="comparison-results" class="comparison-results" style="display: none;">
+        <h3>Comparison Results</h3>
+        
+        <div class="comparison-grid" id="comparison-grid"></div>
+        
+        <div class="comparison-charts">
+            <div class="chart-container">
+                <h4>AQI Comparison</h4>
+                <canvas id="aqiComparisonChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h4>Pollutant Breakdown</h4>
+                <canvas id="pollutantsComparisonChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="comparison-summary" id="comparison-summary"></div>
+        
+        <div class="comparison-actions">
+            <button id="share-comparison" class="btn btn-primary">Share Comparison</button>
+            <button id="download-comparison" class="btn btn-secondary">Download as PDF</button>
+        </div>
+    </div>
+    
+    <div id="loading-indicator" class="loading-indicator" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading comparison data...</p>
+    </div>
+</div>
+
+<div id="share-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Share Comparison</h3>
+        <div class="share-options">
+            <button class="btn-share-option" data-platform="twitter">Twitter</button>
+            <button class="btn-share-option" data-platform="facebook">Facebook</button>
+            <button class="btn-share-option" data-platform="whatsapp">WhatsApp</button>
+            <button class="btn-share-option" data-platform="email">Email</button>
+        </div>
+        <div class="share-link">
+            <input type="text" id="share-url" readonly>
+            <button id="copy-link" class="btn btn-small">Copy</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Helper function to get AQI class based on value
+    function getAqiClass(aqi) {
+        if (aqi <= 50) return 'good';
+        if (aqi <= 100) return 'moderate';
+        if (aqi <= 150) return 'unhealthy-sensitive';
+        if (aqi <= 200) return 'unhealthy';
+        if (aqi <= 300) return 'very-unhealthy';
+        return 'hazardous';
+    }
+    
+    // Helper function to get AQI description based on value
+    function getAqiDescription(aqi) {
+        if (aqi <= 50) return 'Good';
+        if (aqi <= 100) return 'Moderate';
+        if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+        if (aqi <= 200) return 'Unhealthy';
+        if (aqi <= 300) return 'Very Unhealthy';
+        return 'Hazardous';
+    }
+    
+    let aqiComparisonChart, pollutantsComparisonChart;
+    
+    document.getElementById('compare-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const city1 = document.getElementById('city1').value;
+        const city2 = document.getElementById('city2').value;
+        const city3 = document.getElementById('city3').value;
+        
+        if (!city1 || !city2) {
+            alert('Please select at least two cities to compare.');
+            return;
+        }
+        
+        if (city1 === city2 || (city3 && (city1 === city3 || city2 === city3))) {
+            alert('Please select different cities for comparison.');
+            return;
+        }
+        
+        // Show loading indicator
+        document.getElementById('loading-indicator').style.display = 'flex';
+        
+        // Fetch data for selected cities
+        const promises = [
+            fetch(`/get_aqi_data/${encodeURIComponent(city1)}`).then(res => res.json()),
+            fetch(`/get_aqi_data/${encodeURIComponent(city2)}`).then(res => res.json())
+        ];
+        
+        if (city3) {
+            promises.push(fetch(`/get_aqi_data/${encodeURIComponent(city3)}`).then(res => res.json()));
+        }
+        
+        Promise.all(promises)
+            .then(results => {
+                // Hide loading indicator
+                document.getElementById('loading-indicator').style.display = 'none';
+                
+                // Process and display results
+                displayComparisonResults(
+                    [city1, city2, city3].filter(Boolean),
+                    results
+                );
+            })
+            .catch(error => {
+                console.error('Error fetching comparison data:', error);
+                document.getElementById('loading-indicator').style.display = 'none';
+                alert('Error fetching data. Please try again.');
+            });
+    });
+    
+    function displayComparisonResults(cities, results) {
+        const comparisonGrid = document.getElementById('comparison-grid');
+        const comparisonSummary = document.getElementById('comparison-summary');
+        
+        // Clear previous results
+        comparisonGrid.innerHTML = '';
+        comparisonSummary.innerHTML = '';
+        
+        // Create comparison grid
+        let gridHTML = '<div class="comparison-row header"><div class="comparison-cell"></div>';
+        
+        cities.forEach(city => {
+            gridHTML += `<div class="comparison-cell">${city}</div>`;
+        });
+        
+        gridHTML += '</div>';
+        
+        // AQI row
+        gridHTML += '<div class="comparison-row"><div class="comparison-cell">AQI</div>';
+        
+        results.forEach(data => {
+            const aqiClass = getAqiClass(data.aqi);
+            gridHTML += `
+                <div class="comparison-cell">
+                    <div class="aqi-value ${aqiClass}">${data.aqi}</div>
+                    <p>${getAqiDescription(data.aqi)}</p>
+                </div>
+            `;
+        });
+        
+        gridHTML += '</div>';
+        
+        // Pollutants rows
+        const pollutants = ['pm25', 'pm10', 'o3', 'no2', 'so2', 'co'];
+        const pollutantNames = {
+            'pm25': 'PM2.5',
+            'pm10': 'PM10',
+            'o3': 'Ozone',
+            'no2': 'NO₂',
+            'so2': 'SO₂',
+            'co': 'CO'
+        };
+        
+        pollutants.forEach(pollutant => {
+            if (results.some(data => data.iaqi && data.iaqi[pollutant])) {
+                gridHTML += `<div class="comparison-row"><div class="comparison-cell">${pollutantNames[pollutant]}</div>`;
+                
+                results.forEach(data => {
+                    const value = data.iaqi && data.iaqi[pollutant] ? data.iaqi[pollutant].v : 'N/A';
+                    gridHTML += `<div class="comparison-cell">${value}</div>`;
+                });
+                
+                gridHTML += '</div>';
+            }
+        });
+        
+        comparisonGrid.innerHTML = gridHTML;
+        
+        // Create summary
+        let bestCity = { name: '', aqi: Infinity };
+        let worstCity = { name: '', aqi: -1 };
+        
+        cities.forEach((city, index) => {
+            const aqi = results[index].aqi;
+            
+            if (aqi < bestCity.aqi) {
+                bestCity = { name: city, aqi: aqi };
+            }
+            
+            if (aqi > worstCity.aqi) {
+                worstCity = { name: city, aqi: aqi };
+            }
+        });
+        
+        comparisonSummary.innerHTML = `
+            <h4>Summary</h4>
+            <p><strong>${bestCity.name}</strong> has the best air quality with an AQI of ${bestCity.aqi} (${getAqiDescription(bestCity.aqi)}).</p>
+            <p><strong>${worstCity.name}</strong> has the worst air quality with an AQI of ${worstCity.aqi} (${getAqiDescription(worstCity.aqi)}).</p>
+            <p>The difference between the best and worst AQI is ${worstCity.aqi - bestCity.aqi} points.</p>
+        `;
+        
+        // Create charts
+        createComparisonCharts(cities, results);
+        
+        // Show results
+        document.getElementById('comparison-results').style.display = 'block';
+    }
+    
+    function createComparisonCharts(cities, results) {
+        // Destroy previous charts if they exist
+        if (aqiComparisonChart) {
+            aqiComparisonChart.destroy();
+        }
+        
+        if (pollutantsComparisonChart) {
+            pollutantsComparisonChart.destroy();
+        }
+        
+        // AQI Comparison Chart
+        const aqiCtx = document.getElementById('aqiComparisonChart').getContext('2d');
+        aqiComparisonChart = new Chart(aqiCtx, {
+            type: 'bar',
+            data: {
+                labels: cities,
+                datasets: [{
+                    label: 'AQI',
+                    data: results.map(data => data.aqi),
+                    backgroundColor: results.map(data => {
+                        const aqi = data.aqi;
+                        if (aqi <= 50) return 'rgba(0, 228, 0, 0.7)';
+                        if (aqi <= 100) return 'rgba(255, 255, 0, 0.7)';
+                        if (aqi <= 150) return 'rgba(255, 126, 0, 0.7)';
+                        if (aqi <= 200) return 'rgba(255, 0, 0, 0.7)';
+                        if (aqi <= 300) return 'rgba(153, 0, 76, 0.7)';
+                        return 'rgba(126, 0, 35, 0.7)';
+                    }),
+                    borderColor: results.map(data => {
+                        const aqi = data.aqi;
+                        if (aqi <= 50) return 'rgb(0, 228, 0)';
+                        if (aqi <= 100) return 'rgb(255, 255, 0)';
+                        if (aqi <= 150) return 'rgb(255, 126, 0)';
+                        if (aqi <= 200) return 'rgb(255, 0, 0)';
+                        if (aqi <= 300) return 'rgb(153, 0, 76)';
+                        return 'rgb(126, 0, 35)';
+                    }),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'AQI Value'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Pollutants Comparison Chart
+        const pollutants = ['pm25', 'pm10', 'o3', 'no2', 'so2', 'co'];
+        const pollutantNames = {
+            'pm25': 'PM2.5',
+            'pm10': 'PM10',
+            'o3': 'Ozone',
+            'no2': 'NO₂',
+            'so2': 'SO₂',
+            'co': 'CO'
+        };
+        
+        const datasets = [];
+        const availablePollutants = pollutants.filter(pollutant => 
+            results.some(data => data.iaqi && data.iaqi[pollutant])
+        );
+        
+        cities.forEach((city, index) => {
+            const data = availablePollutants.map(pollutant => 
+                results[index].iaqi && results[index].iaqi[pollutant] 
+                    ? results[index].iaqi[pollutant].v 
+                    : 0
+            );
+            
+            datasets.push({
+                label: city,
+                data: data,
+                backgroundColor: `rgba(${50 + index * 70}, ${100 + index * 50}, ${150 + index * 30}, 0.7)`,
+                borderColor: `rgb(${50 + index * 70}, ${100 + index * 50}, ${150 + index * 30})`,
+                borderWidth: 1
+            });
+        });
+        
+        const pollutantsCtx = document.getElementById('pollutantsComparisonChart').getContext('2d');
+        pollutantsComparisonChart = new Chart(pollutantsCtx, {
+            type: 'radar',
+            data: {
+                labels: availablePollutants.map(p => pollutantNames[p]),
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    r: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    // Share functionality
+    document.getElementById('share-comparison').addEventListener('click', function() {
+        const city1 = document.getElementById('city1').value;
+        const city2 = document.getElementById('city2').value;
+        const city3 = document.getElementById('city3').value;
+        
+        const cities = [city1, city2];
+        if (city3) cities.push(city3);
+        
+        const shareUrl = `${window.location.origin}/compare?cities=${cities.join(',')}`;
+        const shareText = `Air Quality Comparison between ${cities.join(', ')}`;
+        
+        document.getElementById('share-url').value = shareUrl;
+        
+        // Set up share buttons
+        document.querySelectorAll('.btn-share-option').forEach(btn => {
+            const platform = btn.dataset.platform;
+            
+            btn.onclick = function() {
+                let shareLink;
+                
+                switch(platform) {
+                    case 'twitter':
+                        shareLink = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+                        break;
+                    case 'facebook':
+                        shareLink = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+                        break;
+                    case 'whatsapp':
+                        shareLink = `https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`;
+                        break;
+                    case 'email':
+                        shareLink = `mailto:?subject=Air Quality Comparison&body=${encodeURIComponent(shareText + '\n\nCheck it out: ' + shareUrl)}`;
+                        break;
+                }
+                
+                if (shareLink) {
+                    window.open(shareLink, '_blank');
+                }
+            };
+        });
+        
+        document.getElementById('share-modal').style.display = 'block';
+    });
+    
+    // Close modal
+    document.querySelector('.close-modal').addEventListener('click', function() {
+        document.getElementById('share-modal').style.display = 'none';
+    });
+    
+    // Copy share link
+    document.getElementById('copy-link').addEventListener('click', function() {
+        const shareUrl = document.getElementById('share-url');
+        shareUrl.select();
+        document.execCommand('copy');
+        this.textContent = 'Copied!';
+        setTimeout(() => {
+            this.textContent = 'Copy';
+        }, 2000);
+    });
+    
+    // Download as PDF (mock functionality)
+    document.getElementById('download-comparison').addEventListener('click', function() {
+        alert('PDF download functionality would be implemented here in a production environment.');
+        // In a real implementation, this would use a library like jsPDF to generate a PDF
+        // containing the comparison data, charts, and summary
+    });
+</script>
+{% endblock %}
+

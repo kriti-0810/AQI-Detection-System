@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}AQI Monitoring System - Home{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-content">
+        <h1>Monitor Air Quality in Real-Time</h1>
+        <p>Track, compare, and receive alerts about air quality in cities around the world.</p>
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Go to Dashboard</a>
+        {% else %}
+            <a href="{{ url_for('register') }}" class="btn btn-primary">Get Started</a>
+            <a href="{{ url_for('login') }}" class="btn btn-secondary">Login</a>
+        {% endif %}
+    </div>
+    <div class="hero-image">
+        <div class="aqi-preview">
+            <div class="aqi-card">
+                <h3>New York</h3>
+                <div class="aqi-value good">42</div>
+                <p>Good</p>
+            </div>
+            <div class="aqi-card">
+                <h3>London</h3>
+                <div class="aqi-value moderate">65</div>
+                <p>Moderate</p>
+            </div>
+            <div class="aqi-card">
+                <h3>Beijing</h3>
+                <div class="aqi-value unhealthy">135</div>
+                <p>Unhealthy</p>
+            </div>
+        </div>
+    </div>
+</section>
+<section class="search">
+    <h2>Search Air Quality</h2>
+    <form action="{{ url_for('search_city') }}" method="POST" class="search-form">
+        <input type="text" name="city_name" placeholder="Enter city name" required>
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+</section>
+
+{% if search_result %}
+<section class="search-result">
+    <h3>Air Quality in {{ search_result.city }}</h3>
+    <div class="aqi-card">
+        <div class="aqi-value {{ search_result.aqi_class }}">{{ search_result.aqi }}</div>
+        <p>{{ search_result.aqi_description }}</p>
+    </div>
+</section>
+{% endif %}
+
+
+<section class="features">
+    <h2>Features</h2>
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Real-time Monitoring</h3>
+            <p>Get up-to-date air quality information from cities worldwide.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🔔</div>
+            <h3>Personalized Alerts</h3>
+            <p>Receive notifications when air quality exceeds your set thresholds.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🗺️</div>
+            <h3>Interactive Maps</h3>
+            <p>Visualize air quality data with heatmaps and detailed charts.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">📱</div>
+            <h3>Social Sharing</h3>
+            <p>Share air quality information with friends and family.</p>
+        </div>
+    </div>
+</section>
+
+<section class="about">
+    <h2>Understanding AQI</h2>
+    <div class="aqi-scale">
+        <div class="aqi-level" style="background-color: #00e400;">
+            <h3>Good</h3>
+            <p>0-50</p>
+        </div>
+        <div class="aqi-level" style="background-color: #ffff00;">
+            <h3>Moderate</h3>
+            <p>51-100</p>
+        </div>
+        <div class="aqi-level" style="background-color: #ff7e00;">
+            <h3>Unhealthy for Sensitive Groups</h3>
+            <p>101-150</p>
+        </div>
+        <div class="aqi-level" style="background-color: #ff0000;">
+            <h3>Unhealthy</h3>
+            <p>151-200</p>
+        </div>
+        <div class="aqi-level" style="background-color: #99004c;">
+            <h3>Very Unhealthy</h3>
+            <p>201-300</p>
+        </div>
+        <div class="aqi-level" style="background-color: #7e0023;">
+            <h3>Hazardous</h3>
+            <p>301+</p>
+        </div>
+    </div>
+    <p class="aqi-info">
+        The Air Quality Index (AQI) is a standardized indicator for reporting air quality. 
+        It tells you how clean or polluted your air is and what associated health effects 
+        might be a concern. The AQI focuses on health effects you may experience within a 
+        few hours or days after breathing polluted air.
+    </p>
+</section>
+{% endblock %}
+

@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AQI Monitoring System{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h2>Welcome, {{ current_user.username }}</h2>
+        <div class="dashboard-actions">
+            <button id="check-alerts-btn" class="btn btn-secondary">Check Alerts</button>
+            <button id="add-city-btn" class="btn btn-primary">Add City</button>
+        </div>
+    </div>
+    
+    <div id="alerts-container" class="alerts-container" style="display: none;">
+        <h3>Alerts</h3>
+        <div id="alerts-list" class="alerts-list"></div>
+    </div>
+    
+    <div id="add-city-form" class="add-city-form" style="display: none;">
+        <h3>Add City to Monitor</h3>
+        <form method="POST" action="{{ url_for('add_city') }}">
+            <div class="form-group">
+                <label for="city_name">City Name</label>
+                <input type="text" id="city_name" name="city_name" required>
+            </div>
+            <div class="form-group">
+                <label for="alert_threshold">Alert Threshold (AQI)</label>
+                <input type="number" id="alert_threshold" name="alert_threshold" value="100" min="0" max="500">
+            </div>
+            <button type="submit" class="btn btn-primary">Add City</button>
+            <button type="button" id="cancel-add-city" class="btn btn-secondary">Cancel</button>
+        </form>
+    </div>
+    
+    <div class="cities-grid">
+        {% if cities %}
+            {% for city in cities %}
+                <div class="city-card" data-city-id="{{ city.id }}">
+                    <div class="city-header">
+                        <h3>{{ city.name }}</h3>
+                        <div class="city-actions">
+                            <button class="btn-icon edit-threshold" title="Edit Alert Threshold">⚙️</button>
+                            <button class="btn-icon remove-city" title="Remove City">❌</button>
+                        </div>
+                    </div>
+                    <div class="aqi-display">
+                        <div class="aqi-value {{ get_aqi_class(city.aqi) }}">{{ city.aqi }}</div>
+                        <p>{{ get_aqi_description(city.aqi) }}</p>
+                    </div>
+                    <div class="city-footer">
+                        <a href="{{ url_for('city_detail', city_name=city.name) }}" class="btn btn-small">View Details</a>
+                        <button class="btn btn-small btn-share">Share</button>
+                    </div>
+                    <div class="threshold-info">
+                        Alert when AQI > {{ city.alert_threshold }}
+                    </div>
+                    <div class="edit-threshold-form" style="display: none;">
+                        <form method="POST" action="{{ url_for('update_threshold', city_id=city.id) }}">
+                            <div class="form-group">
+                                <label for="alert_threshold_{{ city.id }}">Alert Threshold</label>
+                                <input type="number" id="alert_threshold_{{ city.id }}" name="alert_threshold" value="{{ city.alert_threshold }}" min="0" max="500">
+                            </div>
+                            <button type="submit" class="btn btn-small">Save</button>
+                            <button type="button" class="btn btn-small btn-cancel">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-cities">
+                <p>You haven't added any cities to monitor yet.</p>
+                <button id="add-first-city" class="btn btn-primary">Add Your First City</button>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="share-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Share AQI Information</h3>
+        <div class="share-options">
+            <button class="btn-share-option" data-platform="twitter">Twitter</button>
+            <button class="btn-share-option" data-platform="facebook">Facebook</button>
+            <button class="btn-share-option" data-platform="whatsapp">WhatsApp</button>
+            <button class="btn-share-option" data-platform="email">Email</button>
+        </div>
+        <div class="share-link">
+            <input type="text" id="share-url" readonly>
+            <button id="copy-link" class="btn btn-small">Copy</button>
+        </div>
+    </div>
+</div>
+
+<div id="remove-confirm-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Confirm Removal</h3>
+        <p>Are you sure you want to remove this city from your monitoring list?</p>
+        <div class="modal-actions">
+            <form id="remove-city-form" method="POST">
+                <button type="submit" class="btn btn-danger">Remove</button>
+                <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Helper function to get AQI class based on value
+    function getAqiClass(aqi) {
+        if (aqi <= 50) return 'good';
+        if (aqi <= 100) return 'moderate';
+        if (aqi <= 150) return 'unhealthy-sensitive';
+        if (aqi <= 200) return 'unhealthy';
+        if (aqi <= 300) return 'very-unhealthy';
+        return 'hazardous';
+    }
+    
+    // Helper function to get AQI description based on value
+    function getAqiDescription(aqi) {
+        if (aqi <= 50) return 'Good';
+        if (aqi <= 100) return 'Moderate';
+        if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+        if (aqi <= 200) return 'Unhealthy';
+        if (aqi <= 300) return 'Very Unhealthy';
+        return 'Hazardous';
+    }
+    
+    // Add city form toggle
+    document.getElementById('add-city-btn').addEventListener('click', function() {
+        document.getElementById('add-city-form').style.display = 'block';
+    });
+    
+    document.getElementById('cancel-add-city').addEventListener('click', function() {
+        document.getElementById('add-city-form').style.display = 'none';
+    });
+    
+    // If no cities, show add first city button
+    if (document.getElementById('add-first-city')) {
+        document.getElementById('add-first-city').addEventListener('click', function() {
+            document.getElementById('add-city-form').style.display = 'block';
+        });
+    }
+    
+    // Edit threshold toggle
+    document.querySelectorAll('.edit-threshold').forEach(button => {
+        button.addEventListener('click', function() {
+            const card = this.closest('.city-card');
+            card.querySelector('.threshold-info').style.display = 'none';
+            card.querySelector('.edit-threshold-form').style.display = 'block';
+        });
+    });
+    
+    document.querySelectorAll('.btn-cancel').forEach(button => {
+        button.addEventListener('click', function() {
+            const card = this.closest('.city-card');
+            card.querySelector('.threshold-info').style.display = 'block';
+            card.querySelector('.edit-threshold-form').style.display = 'none';
+        });
+    });
+    
+    // Remove city confirmation
+    document.querySelectorAll('.remove-city').forEach(button => {
+        button.addEventListener('click', function() {
+            const card = this.closest('.city-card');
+            const cityId = card.dataset.cityId;
+            const modal = document.getElementById('remove-confirm-modal');
+            const form = document.getElementById('remove-city-form');
+            
+            form.action = `/remove_city/${cityId}`;
+            modal.style.display = 'block';
+        });
+    });
+    
+    // Close modals
+    document.querySelectorAll('.close-modal').forEach(element => {
+        element.addEventListener('click', function() {
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.style.display = 'none';
+            });
+        });
+    });
+    
+    // Share functionality
+    document.querySelectorAll('.btn-share').forEach(button => {
+        button.addEventListener('click', function() {
+            const card = this.closest('.city-card');
+            const cityName = card.querySelector('h3').textContent;
+            const aqi = card.querySelector('.aqi-value').textContent;
+            const description = card.querySelector('.aqi-display p').textContent;
+            
+            const shareUrl = `${window.location.origin}/city/${encodeURIComponent(cityName)}`;
+            const shareText = `Air Quality in ${cityName}: AQI ${aqi} (${description})`;
+            
+            document.getElementById('share-url').value = shareUrl;
+            
+            // Set up share buttons
+            document.querySelectorAll('.btn-share-option').forEach(btn => {
+                const platform = btn.dataset.platform;
+                
+                btn.onclick = function() {
+                    let shareLink;
+                    
+                    switch(platform) {
+                        case 'twitter':
+                            shareLink = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+                            break;
+                        case 'facebook':
+                            shareLink = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+                            break;
+                        case 'whatsapp':
+                            shareLink = `https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`;
+                            break;
+                        case 'email':
+                            shareLink = `mailto:?subject=Air Quality Update for ${encodeURIComponent(cityName)}&body=${encodeURIComponent(shareText + '\n\nCheck it out: ' + shareUrl)}`;
+                            break;
+                    }
+                    
+                    if (shareLink) {
+                        window.open(shareLink, '_blank');
+                    }
+                };
+            });
+            
+            document.getElementById('share-modal').style.display = 'block';
+        });
+    });
+    
+    // Copy share link
+    document.getElementById('copy-link').addEventListener('click', function() {
+        const shareUrl = document.getElementById('share-url');
+        shareUrl.select();
+        document.execCommand('copy');
+        this.textContent = 'Copied!';
+        setTimeout(() => {
+            this.textContent = 'Copy';
+        }, 2000);
+    });
+    
+    // Check for alerts
+    document.getElementById('check-alerts-btn').addEventListener('click', function() {
+        fetch('/check_alerts')
+            .then(response => response.json())
+            .then(data => {
+                const alertsContainer = document.getElementById('alerts-container');
+                const alertsList = document.getElementById('alerts-list');
+                
+                alertsList.innerHTML = '';
+                
+                if (data.length > 0) {
+                    data.forEach(alert => {
+                        const alertItem = document.createElement('div');
+                        alertItem.className = 'alert-item';
+                        alertItem.innerHTML = `
+                            <div class="alert-icon">⚠️</div>
+                            <div class="alert-content">
+                                <h4>${alert.city}</h4>
+                                <p>Current AQI: <span class="aqi-value ${getAqiClass(alert.aqi)}">${alert.aqi}</span></p>
+                                <p>Exceeds your threshold of ${alert.threshold}</p>
+                            </div>
+                        `;
+                        alertsList.appendChild(alertItem);
+                    });
+                    
+                    alertsContainer.style.display = 'block';
+                } else {
+                    alertsList.innerHTML = '<p>No alerts at this time. All monitored cities are below your thresholds.</p>';
+                    alertsContainer.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error checking alerts:', error);
+            });
+    });
+</script>
+{% endblock %}
+
